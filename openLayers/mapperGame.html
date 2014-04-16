@@ -1,0 +1,337 @@
+
+        <script src="OL/OpenLayers.js"></script>
+        <script src="jquery.js"></script>
+        <script src="underscore.js"></script>
+	    <script src="http://d3js.org/d3.v3.min.js"></script>
+        <script src="schoolsArray.js"></script>
+	
+        <style>
+            body {
+        	    font-family: Arial, Helvetica, sans-serif;
+			    //margin: 4px;
+                position:relative;
+                //background:#050535;
+            }
+            html,body{
+                width:100%;
+                height:100%;
+                
+			}
+            p{          
+                display:block;
+            }
+            #map {
+            	
+            	width: 60%;
+            	height: 98%;
+            	float:left;
+            	//border:2px solid blue;
+            	//margin:10px;
+            }
+            #content{
+                width:38%;
+                height:98%;
+                //border:2px solid green;
+                float:left;
+                margin-left:10px;
+            }
+            
+            #moverB{
+                position:absolute;
+                top:25px;
+                left:25px;
+                z-index:1000;
+                width:100px;
+                //float:left;
+            }
+            path {
+                fill: 100%;
+                fill-opacity: .2;
+                stroke: #fff;
+                stroke-width: 1.5px;
+            }
+
+            path:hover {
+                fill: brown;
+                fill-opacity: .7;
+            }
+        </style>
+ 
+        <script type="text/javascript">
+		
+			//global variables
+			var map;  
+			var featurePolygon, boundsPolygon, svgPolygon, gPolygon, pathPolygon;
+			var featurePoint, boundsPoint, svgPoint, gPoint, pathPoint, overlayPoint, _collectionPoint;
+			
+			
+			//colors needed for gradient. should change to normal form. this is temporary
+			var yellow = {r:255, g:255, b:0};
+			var blue = {r:0, g:0, b:255};
+			var red = {r:255, g:0, b:0};
+		    var green = {r:0, g:255, b:0};
+		
+           
+			// property to make gradient of colors for point. if undefined will be mincolor for all and sizeMinPoint for all;
+			var propertyColorPoint ="SLN" ;
+			var colorMinPoint = blue;
+			var colorMaxPoint = red;
+			var propertySizePoint ="SLN" ;
+			var sizeMinPoint = 3;
+			var sizeMaxPoint = 20;
+			
+			// property to make gradient of colors for polygon. if undefined will be mincolor for all
+			var propertyPolygon = "ELEM_SLN";
+			var colorMinPolygon = green;
+			var colorMaxPolygon = yellow;
+			
+			//initialisation, do not change
+			var maxPolygon = Number.MIN_VALUE;
+			var minPolygon = Number.MAX_VALUE;
+			var maxPoint = Number.MIN_VALUE;
+			var minPoint = Number.MAX_VALUE;
+			
+			//apikey for bing - should be changed with an api key specific for the website you are posting this on
+			var apiKey = "AqTGBsziZHIJYYxgivLBf0hVdrAk9mWO5cQcb8Yux8sW5M8c8opEC2lZqKR1ZZXf";
+            function init() {
+               
+				//var ls = new OpenLayers.Control.LayerSwitcher()
+                map = new OpenLayers.Map('map', {
+                    numZoomLevels: 20,
+                    projection: new OpenLayers.Projection("EPSG:900913"),
+                    displayProjection: new OpenLayers.Projection("EPSG: 4326"),                  
+                    controls: [
+                        //new OpenLayers.Control.Navigation(),
+                        //new OpenLayers.Control.Zoom(),
+                        //new OpenLayers.Control.ScaleLine(),
+                        //ls,
+                        //new OpenLayers.Control.MousePosition(),
+                        //new OpenLayers.Control.KeyboardDefaults()
+                    ]
+                });
+				//ls.maximizeControl();
+
+				var osm = new OpenLayers.Layer.OSM();
+                 var road = new OpenLayers.Layer.Bing({
+                name: "Bing Road",
+                key: apiKey,
+                type: "Road"
+            });
+            var hybrid = new OpenLayers.Layer.Bing({
+                name: "Bing Hybrid",
+                key: apiKey,
+                type: "AerialWithLabels"
+            });
+            var aerial = new OpenLayers.Layer.Bing({
+                name: "Bing Aerial",
+                key: apiKey,
+                type: "Aerial"
+            });
+
+            map.addLayers([osm, road, hybrid, aerial]);
+
+             map.setCenter(new OpenLayers.LonLat(-96.7, 32.77).transform("EPSG:4326", "EPSG:900913"), 11);
+	
+				    d3.json("pt.js", function (_collectionPoint) {
+					collectionPoint = _collectionPoint;
+					overlayPoint = new OpenLayers.Layer.Vector("Elementary");
+
+					
+                    // Add the container when the overlay is added to the map.
+                    overlayPoint.afterAdd = function () {
+                        
+                            
+                        map.events.register("moveend", map, resetPoint);
+
+                        resetPoint();
+                    }
+
+                    map.addLayer(overlayPoint);
+                });
+            }
+            
+            
+            //var schoolsArray = {"Highland Meadows Elementary School":15};
+            
+
+     console.log(_.where(schoolsArray, {"org": 303}));
+     
+     //var schoolers = {{125:13],{101:25}};
+			
+			function createPointLayer(){
+			//get the vector layer div element
+                        var divPoint = d3.selectAll("#" + overlayPoint.div.id);
+                        //remove the existing svg element and create a new one
+                        divPoint.selectAll("svg").remove();
+                        svgPoint = divPoint.append("svg");
+                        //Add a G (group) element
+                        gPoint = svgPoint.append("g");
+						//This puts the point layer on top
+						overlayPoint.setZIndex(5000);	
+						boundsPoint = d3.geo.bounds(collectionPoint),
+                            pathPoint = d3.geo.path().projection(projectPoint);
+						collectionPoint.features.forEach(function(d, i) {
+								if((propertyColorPoint)||(propertySizePoint))
+								{
+								if(maxPoint<d.properties[propertyColorPoint]) {maxPoint=d.properties[propertyColorPoint]}
+								if(minPoint>d.properties[propertyColorPoint]) {minPoint=d.properties[propertyColorPoint]}
+								}
+								}
+						);
+
+						var schoolsFromMap = [];
+                        
+						console.log("org numbers");
+						console.log(_.pluck(schoolsArray, "org"));
+
+						featurePoint = gPoint.selectAll("circle")
+                            .data(collectionPoint.features)
+                            .enter().append("circle")
+                            .style("fill", "red")
+							.style("stroke-width", "1")
+							.style("stroke", "black")
+							.attr("r", function (d, i) {
+							    var thisOne = _.where(schoolsArray, { "org": d.properties.SLN });
+							    schoolsFromMap.push(d.properties.SLN);
+							    if (thisOne[0] === undefined) {
+							        return 3;
+							    }
+							    else {
+							        return ((thisOne[0]['vacancies'] + 6) / 2);
+							    }
+							})
+							.attr("cx", function (d, i) {
+							    return projectPoint(d.geometry.coordinates)[0];
+							})
+							.attr("cy", function (d, i) {
+							    return projectPoint(d.geometry.coordinates)[1];
+							})
+							.on("mouseover", function (d, i) {
+
+							    var thisOne = _.where(schoolsArray, { "org": d.properties.SLN });
+							    if (thisOne[0] === undefined) {
+							        $("#schoolName").html(d.properties.SCHOOLNAME);
+							        $("#NuVacancies").html("not sure how many vacancies");
+							    }
+							    else {
+							        $("#schoolName").html(d.properties.SCHOOLNAME);
+							        $("#NuVacancies").html(thisOne[0]['vacancies'] + " vacancies");
+							    }
+							})
+                            .on("click", function (d, i) {
+                                //add to totalFilled
+
+                                var thisOne = _.where(schoolsArray, { "org": d.properties.SLN });
+                                var filled = parseInt($("#totalFilled").html());
+
+                                if (thisOne[0] === undefined) {
+
+                                }
+                                else {
+                                    filled = filled + thisOne[0]['vacancies'];
+                                    $("#totalFilled").html(filled);
+                                    document.getElementById('voice').play();
+                                    d3.select(this)
+                                        .transition()
+                                        .duration(2000)
+                                            .attr('r', 3);
+                                }
+                            });
+
+						console.log("schoolsFromMap");
+						console.log(schoolsFromMap);
+			}
+			
+			//createPointLayer();
+			function resetPoint() {
+			    createPointLayer();
+				var bottomLeft = projectPoint(boundsPoint[0]),
+					topRight = projectPoint(boundsPoint[1]);
+
+				 svgPoint.attr("width", map.size.w)
+					.attr("height", map.size.h)
+					.style("margin-left", "0px")
+					.style("margin-top", "0px");
+					
+					
+				//svgPoint.attr("width", topRight[0] - bottomLeft[0])
+				//    .attr("height", bottomLeft[1] - topRight[1])
+				//    .style("margin-left", bottomLeft[0] + "px")
+				//    .style("margin-top", topRight[1] + "px");
+			
+				gPoint.attr("transform", "translate(" + 0 + "," + 0 + ")");
+				//firstResetPoint=false;
+			
+				//gPoint.attr("transform", "translate(" + -bottomLeft[0] + "," + -topRight[1] + ")");
+
+				featurePoint.attr("d", pathPoint);
+            }
+			
+			
+			
+//			 function resetPolygon() {
+//				var bottomLeft = projectPoint(boundsPolygon[0]),
+//					topRight = projectPoint(boundsPolygon[1]);
+//
+//				svgPolygon.attr("width", topRight[0] - bottomLeft[0] )
+//					.attr("height", bottomLeft[1] - topRight[1] )
+//					.style("margin-left", bottomLeft[0] + "px")
+//					.style("margin-top", topRight[1] + "px");
+//
+//				gPolygon.attr("transform", "translate(" + -bottomLeft[0] + "," + -topRight[1] + ")");
+//
+//				featurePolygon.attr("d", pathPolygon);
+//			}
+
+			function projectPoint(x) {
+				var point = map.getViewPortPxFromLonLat(new OpenLayers.LonLat(x[0], x[1])
+					 .transform("EPSG:4326", "EPSG:900913"));
+				return [point.x, point.y];
+			}
+			
+			$(document).ready(function(){
+			    document.getElementById('begin').play();
+
+                $("#moverB").click(function(){
+                    //document.getElementById('voice').play();
+                    setInterval(player, 3);
+                    
+                    
+                    //alert("hello world");	
+                     d3.selectAll("circle")
+                         .transition()
+                         .duration(Math.random()*6000)
+                             .attr("r", 3);
+                         
+                });
+                
+                
+                   function player(){
+                    
+                        document.getElementById('voice').play();
+                    
+                    }
+            });
+			
+
+        </script>
+
+    <body onload="init()">
+    
+        <div id="map"></div>
+        <div id="content">
+            <button id="moverB">hello</button>
+            <p id="schoolName"></p>
+            <p id="NuVacancies"></p>
+            <p id="totalFilled">0</p>
+           <audio id="voice">
+              <source src="smw_kick.wav" type="audio/wav">
+            Your browser does not support the audio element.
+            </audio>
+
+           <audio id="begin">
+              <source src="smb2_bonus_chance_win.wav" type="audio/wav">
+            Your browser does not support the audio element.
+            </audio>
+         </div>
+    </body>

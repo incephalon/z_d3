@@ -1,0 +1,344 @@
+<html>
+        <head>
+        <script src="OL/OpenLayers.js"></script>
+        <script src="jquery.js"></script>
+        <script src="underscore.js"></script>
+	    <script src="http://d3js.org/d3.v3.min.js"></script>
+        <script src="schoolsArray.js"></script>
+	
+        <style>
+            body {
+        	font-family: Arial, Helvetica, sans-serif;
+			margin: 0px;
+            }
+            html,body{
+			width:100%;
+			height:100%;
+			}
+            #map {
+            	
+            	width: 100%;
+            	height: 100%;
+            }
+            
+            path {
+                fill: 100%;
+                fill-opacity: .2;
+                stroke: #fff;
+                stroke-width: 1.5px;
+            }
+
+            path:hover {
+                fill: brown;
+                fill-opacity: .7;
+            }
+        </style>
+ </head>
+        <script type="text/javascript">
+
+            //global variables
+            var map;
+            var featurePolygon, boundsPolygon, svgPolygon, gPolygon, pathPolygon;
+            var featurePoint, boundsPoint, svgPoint, gPoint, pathPoint, overlayPoint, _collectionPoint;
+
+
+            //colors needed for gradient. should change to normal form. this is temporary
+            var yellow = { r: 255, g: 255, b: 0 };
+            var blue = { r: 0, g: 0, b: 255 };
+            var red = { r: 255, g: 0, b: 0 };
+            var green = { r: 0, g: 255, b: 0 };
+
+
+            // property to make gradient of colors for point. if undefined will be mincolor for all and sizeMinPoint for all;
+            var propertyColorPoint = "SLN";
+            var colorMinPoint = blue;
+            var colorMaxPoint = red;
+            var propertySizePoint = "SLN";
+            var sizeMinPoint = 3;
+            var sizeMaxPoint = 20;
+
+            // property to make gradient of colors for polygon. if undefined will be mincolor for all
+            var propertyPolygon //= "ELEM_SLN";
+            var colorMinPolygon = green;
+            var colorMaxPolygon = yellow;
+
+            //initialisation, do not change
+            var maxPolygon = Number.MIN_VALUE;
+            var minPolygon = Number.MAX_VALUE;
+            var maxPoint = Number.MIN_VALUE;
+            var minPoint = Number.MAX_VALUE;
+
+            //apikey for bing - should be changed with an api key specific for the website you are posting this on
+            var apiKey = "AqTGBsziZHIJYYxgivLBf0hVdrAk9mWO5cQcb8Yux8sW5M8c8opEC2lZqKR1ZZXf";
+            function init() {
+
+                var ls = new OpenLayers.Control.LayerSwitcher()
+                map = new OpenLayers.Map('map', {
+                    numZoomLevels: 20,
+                    projection: new OpenLayers.Projection("EPSG:900913"),
+                    displayProjection: new OpenLayers.Projection("EPSG: 4326"),
+                    controls: [
+                        new OpenLayers.Control.Navigation(),
+                        new OpenLayers.Control.Zoom(),
+                        new OpenLayers.Control.ScaleLine(),
+                        ls,
+                        new OpenLayers.Control.MousePosition(),
+                        new OpenLayers.Control.KeyboardDefaults()
+                    ]
+                });
+                ls.maximizeControl();
+
+                var osm = new OpenLayers.Layer.OSM();
+                var road = new OpenLayers.Layer.Bing({
+                    name: "Bing Road",
+                    key: apiKey,
+                    type: "Road"
+                });
+                var hybrid = new OpenLayers.Layer.Bing({
+                    name: "Bing Hybrid",
+                    key: apiKey,
+                    type: "AerialWithLabels"
+                });
+                var aerial = new OpenLayers.Layer.Bing({
+                    name: "Bing Aerial",
+                    key: apiKey,
+                    type: "Aerial"
+                });
+
+                map.addLayers([osm, road, hybrid, aerial]);
+
+                map.setCenter(new OpenLayers.LonLat(-96.7, 32.77).transform("EPSG:4326", "EPSG:900913"), 11);
+
+
+
+
+                d3.json("pl.js", function (collectionPolygon) {
+                    var overlayPolygon = new OpenLayers.Layer.Vector("Campuses");
+                    var elemSchools = [];
+
+                    // Add the container when the overlay is added to the map.
+                    overlayPolygon.afterAdd = function () {
+                        //get the vector layer div element
+                        var divPolygon = d3.selectAll("#" + overlayPolygon.div.id);
+                        //remove the existing svg element and create a new one
+                        divPolygon.selectAll("svg").remove();
+                        svgPolygon = divPolygon.append("svg");
+                        //Add a G (group) element
+                        gPolygon = svgPolygon.append("g");
+
+                        boundsPolygon = d3.geo.bounds(collectionPolygon),
+                            pathPolygon = d3.geo.path().projection(projectPoint);
+                        collectionPolygon.features.forEach(function (d, i) {
+                            if (maxPolygon < d.properties[propertyPolygon]) { maxPolygon = d.properties[propertyPolygon] }
+                            if (minPolygon > d.properties[propertyPolygon]) { minPolygon = d.properties[propertyPolygon] }
+                        }
+						);
+                        featurePolygon = gPolygon.selectAll("path")
+                            .data(collectionPolygon.features)
+                            .enter().append("path").style("fill", function (d, i) {
+                                elemSchools.push(d.properties.ELEM_SLN);
+                                return makeGradientColor(colorMinPolygon, colorMaxPolygon, d.properties[propertyPolygon] * 100 / (maxPolygon - minPolygon)).cssColor;
+                                
+                            })
+							.style("stroke-width", "1")
+							.style("stroke", "blue")
+							.on("mouseover", mouseOverPolygon)
+                        //.on("click", clickPolygon);
+                            .on("click", function (d) {
+                                console.log(d.properties.ELEM_SLN);
+
+                            });
+
+                        map.events.register("moveend", map, resetPolygon);
+
+                        console.log("elemSchools");
+                        console.log(elemSchools);
+                        resetPolygon();
+
+
+
+                    }
+
+                    map.addLayer(overlayPolygon);
+                });
+
+
+                d3.json("pt.js", function (_collectionPoint) {
+                    collectionPoint = _collectionPoint;
+                    overlayPoint = new OpenLayers.Layer.Vector("Elementary");
+
+
+                    // Add the container when the overlay is added to the map.
+                    overlayPoint.afterAdd = function () {
+
+
+                        map.events.register("moveend", map, resetPoint);
+
+                        resetPoint();
+                    }
+
+                    map.addLayer(overlayPoint);
+                });
+
+
+            }
+
+            function createPointLayer() {
+                //get the vector layer div element
+                var divPoint = d3.selectAll("#" + overlayPoint.div.id);
+                //remove the existing svg element and create a new one
+                divPoint.selectAll("svg").remove();
+                svgPoint = divPoint.append("svg");
+                //Add a G (group) element
+                gPoint = svgPoint.append("g");
+                //This puts the point layer on top
+                overlayPoint.setZIndex(5000);
+                boundsPoint = d3.geo.bounds(collectionPoint),
+                    pathPoint = d3.geo.path().projection(projectPoint);
+                collectionPoint.features.forEach(function (d, i) {
+                    if ((propertyColorPoint) || (propertySizePoint)) {
+                        if (maxPoint < d.properties[propertyColorPoint]) { maxPoint = d.properties[propertyColorPoint] }
+                        if (minPoint > d.properties[propertyColorPoint]) { minPoint = d.properties[propertyColorPoint] }
+                    }
+                }
+                );
+                
+
+                featurePoint = gPoint.selectAll("circle")
+                    .data(collectionPoint.features)
+                    .enter().append("circle").style("fill", function (d, i) {
+                        if (propertyColorPoint)
+                            return makeGradientColor(colorMinPoint, colorMaxPoint, d.properties[propertyColorPoint] * 100 / (maxPoint - minPoint)).cssColor;
+                        return makeGradientColor(colorMinPoint, colorMaxPoint, 0).cssColor;
+                    })
+                    .style("stroke-width", "1")
+                    .style("stroke", "black")
+                    .attr("r", function (d, i) {
+                        if (propertySizePoint)
+                            return d.properties[propertySizePoint] / (maxPoint - minPoint) * (sizeMaxPoint - sizeMinPoint) + sizeMinPoint;
+                        return sizeMinPoint;
+                    })
+                    .attr("cx", function (d, i) {
+                        return projectPoint(d.geometry.coordinates)[0];
+                    })
+                    .attr("cy", function (d, i) {
+                        return projectPoint(d.geometry.coordinates)[1];
+                    })
+                    .on("mouseover", mouseOverPoint)
+                    .on("click", clickPoint);
+            }
+
+
+            function resetPoint() {
+                createPointLayer();
+                var bottomLeft = projectPoint(boundsPoint[0]),
+					topRight = projectPoint(boundsPoint[1]);
+
+                svgPoint.attr("width", map.size.w)
+                   .attr("height", map.size.h)
+                   .style("margin-left", "0px")
+                   .style("margin-top", "0px");
+
+
+                //svgPoint.attr("width", topRight[0] - bottomLeft[0])
+                //    .attr("height", bottomLeft[1] - topRight[1])
+                //    .style("margin-left", bottomLeft[0] + "px")
+                //    .style("margin-top", topRight[1] + "px");
+
+                gPoint.attr("transform", "translate(" + 0 + "," + 0 + ")");
+                //firstResetPoint=false;
+
+                //gPoint.attr("transform", "translate(" + -bottomLeft[0] + "," + -topRight[1] + ")");
+
+                featurePoint.attr("d", pathPoint);
+            }
+
+
+
+            function resetPolygon() {
+                var bottomLeft = projectPoint(boundsPolygon[0]),
+					topRight = projectPoint(boundsPolygon[1]);
+
+                svgPolygon.attr("width", topRight[0] - bottomLeft[0])
+					.attr("height", bottomLeft[1] - topRight[1])
+					.style("margin-left", bottomLeft[0] + "px")
+					.style("margin-top", topRight[1] + "px");
+
+                gPolygon.attr("transform", "translate(" + -bottomLeft[0] + "," + -topRight[1] + ")");
+
+                featurePolygon.attr("d", pathPolygon);
+            }
+
+            function projectPoint(x) {
+                var point = map.getViewPortPxFromLonLat(new OpenLayers.LonLat(x[0], x[1])
+					 .transform("EPSG:4326", "EPSG:900913"));
+                return [point.x, point.y];
+            }
+
+            function mouseOverPoint() {
+                var circle = d3.select(this);
+                circle.transition().duration(500)
+					.attr("r", circle.attr("r") * 1 + 10);
+            }
+            function clickPoint() {
+                var circle = d3.select(this);
+                circle.transition().duration(500)
+                    .attr("r", circle.attr("r") * 1 - 10);
+            }
+            function mouseOverPolygon() {
+                var polygon = d3.select(this);
+
+            }
+            function clickPolygon() {
+                var polygon = d3.select(this);
+                console.log()
+
+            }
+
+            function randomColor(seed) {
+                var color = '#';
+                var hue = RYB.rgb();
+                for (var i = 0; i <= 2; i++) {
+                    var c = (Math.floor(hue[i] * 255)).toString(16);
+                    if (c.length == 1) c = "0" + c;
+                    color += c;
+                }
+                return color;
+
+            }
+
+
+            function makeGradientColor(color1, color2, percent) {
+                var newColor = {};
+
+                function makeChannel(a, b) {
+                    return (a + Math.round((b - a) * (percent / 100)));
+                }
+
+                newColor.r = makeChannel(color1.r, color2.r);
+                newColor.g = makeChannel(color1.g, color2.g);
+                newColor.b = makeChannel(color1.b, color2.b);
+                newColor.cssColor = "#" +
+									makeColorPiece(newColor.r) +
+									makeColorPiece(newColor.g) +
+									makeColorPiece(newColor.b);
+                return (newColor);
+            }
+
+            function makeColorPiece(num) {
+                num = Math.min(num, 255);   // not more than 255
+                num = Math.max(num, 0);     // not less than 0
+                var str = num.toString(16);
+                if (str.length < 2) {
+                    str = "0" + str;
+                }
+                return (str);
+            }
+        </script>
+
+    <body onload="init()">
+    
+        <div id="map"></div>
+     
+    </body>
+</html>
